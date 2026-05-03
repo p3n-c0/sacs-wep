@@ -1,0 +1,33 @@
+# Evidence files
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+
+# Output folders
+outputs/
+test_evidence/
+samples/private/
+validation_private/
+
+# Generated exports
+*.csv
+*.html
+*.log
+
+# Hashes and logs
+*hash_manifest*.txt
+*processing_log*.txt
+*database_structure*.txt
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment folders
+venv/
+.env
+
+# Windows files
+Thumbs.db
+Desktop.ini

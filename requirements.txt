@@ -1,0 +1,2 @@
+# SACS WEP currently uses only Python standard library modules.
+# No external packages are required for v0.7.0.
