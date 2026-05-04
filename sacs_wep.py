@@ -10,19 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 
 SCRIPT_NAME = "SACS WEP"
-SCRIPT_VERSION = "0.7.0"
-
-
-MESSAGE_TYPE_MAP = {
-    "0": "Text / standard message",
-    "1": "Image or media-related message",
-    "2": "Audio or voice-related message",
-    "3": "Video or media-related message",
-    "4": "Contact card or shared contact",
-    "5": "Location-related message",
-    "6": "System/service message",
-    "7": "Link/document/other supported type",
-}
+SCRIPT_VERSION = "0.8.1"
 
 
 def safe_filename_timestamp():
@@ -31,9 +19,11 @@ def safe_filename_timestamp():
 
 def calculate_sha256(file_path):
     sha256_hash = hashlib.sha256()
+
     with open(file_path, "rb") as file:
         for byte_block in iter(lambda: file.read(1024 * 1024), b""):
             sha256_hash.update(byte_block)
+
     return sha256_hash.hexdigest()
 
 
@@ -93,26 +83,10 @@ def create_case_folders(output_root, case_id):
     return folders
 
 
-def write_log(log_path, lines):
-    with open(log_path, "w", encoding="utf-8") as log_file:
+def write_text_file(path, lines):
+    with open(path, "w", encoding="utf-8") as file:
         for line in lines:
-            log_file.write(line + "\n")
-
-
-def write_hash_manifest(hash_path, hash_records):
-    with open(hash_path, "w", encoding="utf-8") as hash_file:
-        hash_file.write("SACS WEP Hash Manifest\n")
-        hash_file.write("=" * 70 + "\n")
-        hash_file.write(f"Generated On: {datetime.now().isoformat(timespec='seconds')}\n")
-        hash_file.write(f"Tool Version: {SCRIPT_VERSION}\n")
-        hash_file.write("=" * 70 + "\n\n")
-
-        for record in hash_records:
-            hash_file.write(f"File Role: {record['role']}\n")
-            hash_file.write(f"File Name: {record['file_name']}\n")
-            hash_file.write(f"File Path: {record['file_path']}\n")
-            hash_file.write(f"SHA-256: {record['sha256']}\n")
-            hash_file.write("-" * 70 + "\n")
+            file.write(str(line) + "\n")
 
 
 def inspect_sqlite_database(database_path):
@@ -145,30 +119,35 @@ def inspect_sqlite_database(database_path):
 
 
 def write_database_structure(structure_path, structure):
-    with open(structure_path, "w", encoding="utf-8") as file:
-        file.write("SACS WEP Database Structure Report\n")
-        file.write("=" * 70 + "\n")
-        file.write(f"Generated On: {datetime.now().isoformat(timespec='seconds')}\n")
-        file.write(f"Tool Version: {SCRIPT_VERSION}\n")
-        file.write("=" * 70 + "\n\n")
-        file.write(f"Total Tables Detected: {len(structure)}\n\n")
+    lines = []
+    lines.append("SACS WEP Database Structure Report")
+    lines.append("=" * 70)
+    lines.append(f"Generated On: {datetime.now().isoformat(timespec='seconds')}")
+    lines.append(f"Tool Version: {SCRIPT_VERSION}")
+    lines.append("=" * 70)
+    lines.append("")
+    lines.append(f"Total Tables Detected: {len(structure)}")
+    lines.append("")
 
-        for table_name, columns in structure.items():
-            file.write(f"TABLE: {table_name}\n")
-            file.write("-" * 70 + "\n")
+    for table_name, columns in structure.items():
+        lines.append(f"TABLE: {table_name}")
+        lines.append("-" * 70)
 
-            if not columns:
-                file.write("No columns detected.\n\n")
-                continue
+        if not columns:
+            lines.append("No columns detected.")
+            lines.append("")
+            continue
 
-            for column in columns:
-                file.write(
-                    f"Column: {column['name']} | "
-                    f"Type: {column['type']} | "
-                    f"Primary Key: {column['pk']}\n"
-                )
+        for column in columns:
+            lines.append(
+                f"Column: {column['name']} | "
+                f"Type: {column['type']} | "
+                f"Primary Key: {column['pk']}"
+            )
 
-            file.write("\n")
+        lines.append("")
+
+    write_text_file(structure_path, lines)
 
 
 def detect_relevant_tables(structure):
@@ -182,6 +161,7 @@ def detect_relevant_tables(structure):
 
     for table_name in structure.keys():
         table_lower = table_name.lower()
+
         if any(keyword in table_lower for keyword in keywords):
             relevant.append(table_name)
 
@@ -191,6 +171,7 @@ def detect_relevant_tables(structure):
 def get_column_names(structure, table_name):
     if table_name not in structure:
         return []
+
     return [column["name"] for column in structure[table_name]]
 
 
@@ -198,6 +179,7 @@ def choose_first_existing_column(columns, candidates):
     for candidate in candidates:
         if candidate in columns:
             return candidate
+
     return None
 
 
@@ -225,6 +207,7 @@ def fetch_lookup_table(database_path, structure, table_name, key_candidates, val
         for row in rows:
             key = row[key_col]
             value = row[value_col]
+
             if key is not None and value is not None:
                 lookup[str(key)] = str(value)
 
@@ -245,7 +228,7 @@ def build_resolution_lookups(database_path, structure, log_lines):
     possible_chat_tables = [
         "ZWACHATSESSION",
         "ZWACHAT",
-        "ZWACONVERSATION"
+        "ZWACONVERSATION",
     ]
 
     for table in possible_chat_tables:
@@ -260,8 +243,8 @@ def build_resolution_lookups(database_path, structure, log_lines):
                 "ZPARTNERNAME",
                 "ZTITLE",
                 "ZNAME",
-                "ZCHATIDENTIFIER"
-            ]
+                "ZCHATIDENTIFIER",
+            ],
         )
 
         if partial_lookup:
@@ -276,7 +259,7 @@ def build_resolution_lookups(database_path, structure, log_lines):
     possible_contact_tables = [
         "ZWAADDRESSBOOKCONTACT",
         "ZWAPROFILEPUSHNAME",
-        "ZWAGROUPMEMBER"
+        "ZWAGROUPMEMBER",
     ]
 
     for table in possible_contact_tables:
@@ -292,8 +275,8 @@ def build_resolution_lookups(database_path, structure, log_lines):
                 "ZMEMBERJID",
                 "ZCONTACTJID",
                 "ZPHONE",
-                "ZWHATSAPPID"
-            ]
+                "ZWHATSAPPID",
+            ],
         )
 
         if partial_lookup:
@@ -312,26 +295,63 @@ def build_resolution_lookups(database_path, structure, log_lines):
 def interpret_direction(direction_raw):
     if str(direction_raw) == "1":
         return "Outgoing / From Device Owner"
+
     if str(direction_raw) == "0":
         return "Incoming / To Device Owner"
+
     return "Unknown"
 
 
+def categorize_message(message_type_raw):
+    """
+    Validation-driven categorization based on Case A distribution.
+
+    Type 0: text
+    Types 1, 2, 3: media
+    Types 6, 10: system/service
+    Everything else: other
+    """
+    mtype = str(message_type_raw).strip()
+
+    if mtype == "0":
+        return "text"
+
+    if mtype in ["1", "2", "3"]:
+        return "media"
+
+    if mtype in ["6", "10"]:
+        return "system"
+
+    return "other"
+
+
 def interpret_message_type(message_type_raw):
-    raw = str(message_type_raw).strip()
-    if raw in MESSAGE_TYPE_MAP:
-        return MESSAGE_TYPE_MAP[raw]
-    if raw == "":
-        return "Unknown / not exported"
-    return f"Unmapped message type ({raw})"
+    mtype = str(message_type_raw).strip()
+
+    labels = {
+        "0": "Text / standard message",
+        "1": "Media message",
+        "2": "Media message",
+        "3": "Media message",
+        "6": "System/service message",
+        "10": "System/service message",
+    }
+
+    return labels.get(mtype, f"Other / unmapped message type ({mtype})")
 
 
-def extract_messages_basic(database_path, structure, export_path, log_lines, lookups, target_timezone):
+def extract_messages(database_path, structure, export_paths, log_lines, lookups, target_timezone):
     table_name = "ZWAMESSAGE"
 
     if table_name not in structure:
         log_lines.append("[WARNING] ZWAMESSAGE table not found. Message extraction skipped.")
-        return 0
+        return {
+            "all": 0,
+            "text": 0,
+            "media": 0,
+            "system": 0,
+            "other": 0,
+        }
 
     columns = get_column_names(structure, table_name)
 
@@ -354,14 +374,20 @@ def extract_messages_basic(database_path, structure, export_path, log_lines, loo
         timestamp_col,
         message_type_col,
         text_col,
-        media_col
+        media_col,
     ]:
         if col and col not in selected_columns:
             selected_columns.append(col)
 
     if not selected_columns:
         log_lines.append("[WARNING] No usable columns found in ZWAMESSAGE.")
-        return 0
+        return {
+            "all": 0,
+            "text": 0,
+            "media": 0,
+            "system": 0,
+            "other": 0,
+        }
 
     order_col = timestamp_col if timestamp_col else id_col
 
@@ -381,7 +407,13 @@ def extract_messages_basic(database_path, structure, export_path, log_lines, loo
     except sqlite3.DatabaseError as error:
         log_lines.append(f"[ERROR] Message extraction failed: {error}")
         connection.close()
-        return 0
+        return {
+            "all": 0,
+            "text": 0,
+            "media": 0,
+            "system": 0,
+            "other": 0,
+        }
 
     chat_lookup = lookups.get("chat_lookup", {})
     contact_lookup = lookups.get("contact_lookup", {})
@@ -400,82 +432,114 @@ def extract_messages_basic(database_path, structure, export_path, log_lines, loo
         "timestamp_local",
         "message_type_raw",
         "message_type_interpreted",
+        "message_category",
         "message_text",
         "media_reference",
-        "blank_or_deleted_indicator"
+        "blank_text_indicator",
     ]
 
-    try:
-        with open(export_path, "w", newline="", encoding="utf-8-sig") as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=output_fields)
-            writer.writeheader()
+    all_rows = []
+    text_rows = []
+    media_rows = []
+    system_rows = []
+    other_rows = []
 
-            for row in rows:
-                message_id = row[id_col] if id_col else ""
-                chat_reference = row[chat_col] if chat_col else ""
-                sender_reference = row[sender_col] if sender_col else ""
-                direction_raw = row[from_me_col] if from_me_col else ""
-                timestamp_raw = row[timestamp_col] if timestamp_col else ""
-                message_type_raw = row[message_type_col] if message_type_col else ""
-                message_text = row[text_col] if text_col else ""
-                media_reference = row[media_col] if media_col else ""
+    for row in rows:
+        message_id = row[id_col] if id_col else ""
+        chat_reference = row[chat_col] if chat_col else ""
+        sender_reference = row[sender_col] if sender_col else ""
+        direction_raw = row[from_me_col] if from_me_col else ""
+        timestamp_raw = row[timestamp_col] if timestamp_col else ""
+        message_type_raw = row[message_type_col] if message_type_col else ""
+        message_text = row[text_col] if text_col else ""
+        media_reference = row[media_col] if media_col else ""
 
-                timestamp_utc, timestamp_local = convert_apple_timestamp(
-                    timestamp_raw,
-                    target_timezone
-                )
+        timestamp_utc, timestamp_local = convert_apple_timestamp(
+            timestamp_raw,
+            target_timezone,
+        )
 
-                chat_resolved = chat_lookup.get(str(chat_reference), "")
-                sender_resolved = contact_lookup.get(str(sender_reference), "")
+        chat_resolved = chat_lookup.get(str(chat_reference), "")
+        sender_resolved = contact_lookup.get(str(sender_reference), "")
 
-                if message_text is None or str(message_text).strip() == "":
-                    blank_or_deleted_indicator = (
-                        "Blank text field; may be media, system, deleted, "
-                        "or unsupported message type. Review context before interpretation."
-                    )
-                else:
-                    blank_or_deleted_indicator = ""
+        message_category = categorize_message(message_type_raw)
 
-                writer.writerow({
-                    "source_table": table_name,
-                    "message_id": message_id,
-                    "chat_reference": chat_reference,
-                    "chat_resolved": chat_resolved,
-                    "sender_reference": sender_reference,
-                    "sender_resolved": sender_resolved,
-                    "direction_raw": direction_raw,
-                    "direction_interpreted": interpret_direction(direction_raw),
-                    "timestamp_raw": timestamp_raw,
-                    "timestamp_utc": timestamp_utc,
-                    "timestamp_local": timestamp_local,
-                    "message_type_raw": message_type_raw,
-                    "message_type_interpreted": interpret_message_type(message_type_raw),
-                    "message_text": message_text,
-                    "media_reference": media_reference,
-                    "blank_or_deleted_indicator": blank_or_deleted_indicator
-                })
+        if message_text is None or str(message_text).strip() == "":
+            blank_text_indicator = "Blank text field; interpret using message type/category and surrounding context."
+        else:
+            blank_text_indicator = ""
 
-    except PermissionError:
-        log_lines.append(f"[ERROR] Permission denied while writing: {export_path}")
-        log_lines.append("[HINT] Close the CSV file if it is open in Excel or another program.")
-        print("[ERROR] Permission denied while writing the message export.")
-        print("Close all output CSV files and run the command again.")
-        connection.close()
-        return 0
+        record = {
+            "source_table": table_name,
+            "message_id": message_id,
+            "chat_reference": chat_reference,
+            "chat_resolved": chat_resolved,
+            "sender_reference": sender_reference,
+            "sender_resolved": sender_resolved,
+            "direction_raw": direction_raw,
+            "direction_interpreted": interpret_direction(direction_raw),
+            "timestamp_raw": timestamp_raw,
+            "timestamp_utc": timestamp_utc,
+            "timestamp_local": timestamp_local,
+            "message_type_raw": message_type_raw,
+            "message_type_interpreted": interpret_message_type(message_type_raw),
+            "message_category": message_category,
+            "message_text": message_text,
+            "media_reference": media_reference,
+            "blank_text_indicator": blank_text_indicator,
+        }
+
+        all_rows.append(record)
+
+        if message_category == "text":
+            text_rows.append(record)
+        elif message_category == "media":
+            media_rows.append(record)
+        elif message_category == "system":
+            system_rows.append(record)
+        else:
+            other_rows.append(record)
 
     connection.close()
 
-    log_lines.append("[OK] Basic message extraction completed.")
-    log_lines.append(f"[OK] Records exported: {len(rows)}")
-    log_lines.append(f"[OK] Message export path: {export_path.resolve()}")
+    csv_groups = [
+        (export_paths["all_messages"], all_rows),
+        (export_paths["text_messages"], text_rows),
+        (export_paths["media_messages"], media_rows),
+        (export_paths["system_messages"], system_rows),
+        (export_paths["other_messages"], other_rows),
+    ]
 
-    return len(rows)
+    for path, data_rows in csv_groups:
+        try:
+            with open(path, "w", newline="", encoding="utf-8-sig") as csv_file:
+                writer = csv.DictWriter(csv_file, fieldnames=output_fields)
+                writer.writeheader()
+                writer.writerows(data_rows)
+        except PermissionError:
+            log_lines.append(f"[ERROR] Permission denied while writing: {path}")
+            log_lines.append("[HINT] Close output files if they are open in Excel or another program.")
+
+    log_lines.append("[OK] Message extraction and categorization completed.")
+    log_lines.append(f"[OK] Total records exported: {len(all_rows)}")
+    log_lines.append(f"[OK] Text records: {len(text_rows)}")
+    log_lines.append(f"[OK] Media records: {len(media_rows)}")
+    log_lines.append(f"[OK] System records: {len(system_rows)}")
+    log_lines.append(f"[OK] Other records: {len(other_rows)}")
+
+    return {
+        "all": len(all_rows),
+        "text": len(text_rows),
+        "media": len(media_rows),
+        "system": len(system_rows),
+        "other": len(other_rows),
+    }
 
 
 def export_chat_summary(message_csv_path, summary_csv_path, log_lines):
     if not message_csv_path.exists():
         log_lines.append("[WARNING] Chat summary skipped because message CSV does not exist.")
-        return
+        return 0
 
     summary = {}
 
@@ -509,7 +573,7 @@ def export_chat_summary(message_csv_path, summary_csv_path, log_lines):
                 "chat_identifier",
                 "message_count",
                 "first_timestamp",
-                "last_timestamp"
+                "last_timestamp",
             ]
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
@@ -523,6 +587,9 @@ def export_chat_summary(message_csv_path, summary_csv_path, log_lines):
     except PermissionError:
         log_lines.append(f"[ERROR] Permission denied while writing: {summary_csv_path}")
         log_lines.append("[HINT] Close the chat summary CSV if it is open.")
+        return 0
+
+    return len(summary)
 
 
 def export_selected_chat(message_csv_path, selected_csv_path, chat_filter, log_lines):
@@ -542,7 +609,7 @@ def export_selected_chat(message_csv_path, selected_csv_path, chat_filter, log_l
         "chat_resolved",
         "sender_reference",
         "sender_resolved",
-        "message_text"
+        "message_text",
     ]
 
     with open(message_csv_path, "r", encoding="utf-8-sig", newline="") as csv_file:
@@ -567,9 +634,7 @@ def export_selected_chat(message_csv_path, selected_csv_path, chat_filter, log_l
         with open(selected_csv_path, "w", encoding="utf-8-sig", newline="") as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
-
-            for row in matched_rows:
-                writer.writerow(row)
+            writer.writerows(matched_rows)
 
         log_lines.append("[OK] Selected chat export completed.")
         log_lines.append(f"[OK] Chat filter: {chat_filter}")
@@ -584,68 +649,6 @@ def export_selected_chat(message_csv_path, selected_csv_path, chat_filter, log_l
     return len(matched_rows)
 
 
-def export_media_references(message_csv_path, media_csv_path, log_lines):
-    if not message_csv_path.exists():
-        log_lines.append("[WARNING] Media reference export skipped because message CSV does not exist.")
-        return 0
-
-    media_rows = []
-
-    with open(message_csv_path, "r", encoding="utf-8-sig", newline="") as csv_file:
-        reader = csv.DictReader(csv_file)
-
-        for row in reader:
-            media_reference = row.get("media_reference", "")
-            message_type = row.get("message_type_interpreted", "")
-
-            if str(media_reference).strip() or "media" in str(message_type).lower():
-                media_rows.append({
-                    "message_id": row.get("message_id", ""),
-                    "chat_reference": row.get("chat_reference", ""),
-                    "chat_resolved": row.get("chat_resolved", ""),
-                    "sender_reference": row.get("sender_reference", ""),
-                    "sender_resolved": row.get("sender_resolved", ""),
-                    "timestamp_utc": row.get("timestamp_utc", ""),
-                    "timestamp_local": row.get("timestamp_local", ""),
-                    "message_type_raw": row.get("message_type_raw", ""),
-                    "message_type_interpreted": row.get("message_type_interpreted", ""),
-                    "media_reference": media_reference,
-                    "message_text": row.get("message_text", ""),
-                })
-
-    try:
-        with open(media_csv_path, "w", encoding="utf-8-sig", newline="") as csv_file:
-            fieldnames = [
-                "message_id",
-                "chat_reference",
-                "chat_resolved",
-                "sender_reference",
-                "sender_resolved",
-                "timestamp_utc",
-                "timestamp_local",
-                "message_type_raw",
-                "message_type_interpreted",
-                "media_reference",
-                "message_text",
-            ]
-
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-            writer.writeheader()
-
-            for row in media_rows:
-                writer.writerow(row)
-
-        log_lines.append(f"[OK] Media references exported: {media_csv_path.resolve()}")
-        log_lines.append(f"[OK] Media-related records exported: {len(media_rows)}")
-
-    except PermissionError:
-        log_lines.append(f"[ERROR] Permission denied while writing: {media_csv_path}")
-        log_lines.append("[HINT] Close the media references CSV if it is open.")
-        return 0
-
-    return len(media_rows)
-
-
 def generate_html_timeline_report(
     csv_source_path,
     html_report_path,
@@ -654,7 +657,7 @@ def generate_html_timeline_report(
     chat_filter,
     record_limit,
     timezone_offset,
-    log_lines
+    log_lines,
 ):
     if not csv_source_path.exists():
         log_lines.append("[WARNING] HTML report skipped because source CSV does not exist.")
@@ -807,7 +810,6 @@ It does not independently prove authorship, device control, intent, or legal lia
 
     html_parts.append("</table>")
     html_parts.append("</section>")
-
     html_parts.append("<section>")
 
     if not rows:
@@ -823,8 +825,9 @@ It does not independently prove authorship, device control, intent, or legal lia
         message_id = row.get("message_id", "")
         message_type_raw = row.get("message_type_raw", "")
         message_type_label = row.get("message_type_interpreted", "")
+        message_category = row.get("message_category", "")
         media_reference = row.get("media_reference", "")
-        warning = row.get("blank_or_deleted_indicator", "")
+        warning = row.get("blank_text_indicator", "")
 
         if not message_text:
             message_text = "[No text content exported]"
@@ -833,6 +836,7 @@ It does not independently prove authorship, device control, intent, or legal lia
         html_parts.append("<div class='message-meta'>")
         html_parts.append(f"<span class='badge'>Message ID: {html.escape(str(message_id))}</span>")
         html_parts.append(f"<span class='badge'>Type: {html.escape(str(message_type_raw))}</span>")
+        html_parts.append(f"<span class='badge'>Category: {html.escape(str(message_category))}</span>")
         html_parts.append(f"<span class='badge'>{html.escape(str(message_type_label))}</span>")
         html_parts.append("<br><br>")
         html_parts.append(f"<strong>Local Time:</strong> {html.escape(str(timestamp_local))}<br>")
@@ -853,11 +857,9 @@ It does not independently prove authorship, device control, intent, or legal lia
         html_parts.append("</div>")
 
     html_parts.append("</section>")
-
     html_parts.append("<footer>")
     html_parts.append("Generated by SACS WEP. Review with hash manifest, processing log, and source evidence documentation.")
     html_parts.append("</footer>")
-
     html_parts.append("</main>")
     html_parts.append("</body>")
     html_parts.append("</html>")
@@ -877,6 +879,55 @@ It does not independently prove authorship, device control, intent, or legal lia
     return len(rows)
 
 
+def write_output_hash_manifest(hash_path, hash_records, output_files, log_lines, case_id):
+    with open(hash_path, "w", encoding="utf-8") as hash_file:
+        hash_file.write("SACS WEP Hash Manifest\n")
+        hash_file.write("=" * 70 + "\n")
+        hash_file.write(f"Generated On: {datetime.now().isoformat(timespec='seconds')}\n")
+        hash_file.write(f"Case ID: {case_id}\n")
+        hash_file.write(f"Tool Version: {SCRIPT_VERSION}\n")
+        hash_file.write("=" * 70 + "\n\n")
+
+        hash_file.write("Evidence / Working Copy Hashes\n")
+        hash_file.write("-" * 70 + "\n")
+
+        for record in hash_records:
+            hash_file.write(f"File Role: {record['role']}\n")
+            hash_file.write(f"File Name: {record['file_name']}\n")
+            hash_file.write(f"File Path: {record['file_path']}\n")
+            hash_file.write(f"SHA-256: {record['sha256']}\n")
+            hash_file.write("-" * 70 + "\n")
+
+        hash_file.write("\nGenerated Output Hashes\n")
+        hash_file.write("-" * 70 + "\n")
+
+        for output_file in output_files:
+            if output_file.exists():
+                file_hash = calculate_sha256(output_file)
+                hash_file.write(f"File Name: {output_file.name}\n")
+                hash_file.write(f"File Path: {output_file.resolve()}\n")
+                hash_file.write(f"SHA-256: {file_hash}\n")
+                hash_file.write("-" * 70 + "\n")
+            else:
+                hash_file.write(f"[NOT FOUND] {output_file}\n")
+                hash_file.write("-" * 70 + "\n")
+
+    log_lines.append(f"[OK] Hash manifest written: {hash_path.resolve()}")
+
+
+def write_run_summary(summary_path, summary_data):
+    lines = []
+    lines.append("SACS WEP Run Summary")
+    lines.append("=" * 70)
+
+    for key, value in summary_data.items():
+        lines.append(f"{key}: {value}")
+
+    lines.append("=" * 70)
+
+    write_text_file(summary_path, lines)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="SACS WEP - SecureAfrica WhatsApp Evidence Processor"
@@ -885,38 +936,38 @@ def main():
     parser.add_argument(
         "--input",
         required=True,
-        help="Path to WhatsApp evidence folder containing ChatStorage.sqlite"
+        help="Path to WhatsApp evidence folder containing ChatStorage.sqlite",
     )
 
     parser.add_argument(
         "--case-id",
         required=True,
-        help="Case identifier, for example SACS-CASE-001"
+        help="Case identifier, for example SACS-CASE-001",
     )
 
     parser.add_argument(
         "--output",
         default="outputs",
-        help="Output folder. Default is outputs"
+        help="Output folder. Default is outputs",
     )
 
     parser.add_argument(
         "--chat-filter",
         default=None,
-        help="Optional filter for exporting a selected chat by phone number, JID, name, reference, or message text"
+        help="Optional filter for exporting a selected chat by phone number, JID, name, reference, or message text",
     )
 
     parser.add_argument(
         "--report-limit",
         type=int,
         default=500,
-        help="Maximum number of message records to include in HTML report. Default is 500. Use 0 for no limit."
+        help="Maximum number of message records to include in HTML report. Default is 500. Use 0 for no limit.",
     )
 
     parser.add_argument(
         "--timezone-offset",
         default="+00:00",
-        help="Timezone offset for local timestamp display, e.g. +01:00 for Nigeria/WAT. Default is +00:00"
+        help="Timezone offset for local timestamp display, e.g. +01:00 for Nigeria/WAT. Default is +00:00",
     )
 
     args = parser.parse_args()
@@ -964,17 +1015,24 @@ def main():
     log_path = folders["logs"] / f"processing_log_{run_stamp}.txt"
     hash_path = folders["hashes"] / f"hash_manifest_{run_stamp}.txt"
     structure_path = folders["case_info"] / f"database_structure_{run_stamp}.txt"
+    summary_path = folders["case_info"] / f"run_summary_{run_stamp}.txt"
 
-    message_export_path = folders["exports"] / f"all_messages_raw_{run_stamp}.csv"
+    export_paths = {
+        "all_messages": folders["exports"] / f"all_messages_raw_{run_stamp}.csv",
+        "text_messages": folders["exports"] / f"text_messages_{run_stamp}.csv",
+        "media_messages": folders["exports"] / f"media_messages_{run_stamp}.csv",
+        "system_messages": folders["exports"] / f"system_messages_{run_stamp}.csv",
+        "other_messages": folders["exports"] / f"other_messages_{run_stamp}.csv",
+    }
+
     chat_summary_path = folders["exports"] / f"chat_summary_{run_stamp}.csv"
     selected_chat_path = folders["exports"] / f"selected_chat_timeline_{run_stamp}.csv"
-    media_export_path = folders["exports"] / f"media_references_{run_stamp}.csv"
     html_report_path = folders["reports"] / f"timeline_report_{run_stamp}.html"
 
     expected_files = [
         "ChatStorage.sqlite",
         "ChatStorage.sqlite-wal",
-        "ChatStorage.sqlite-shm"
+        "ChatStorage.sqlite-shm",
     ]
 
     working_database_path = None
@@ -994,7 +1052,7 @@ def main():
                 "role": "Original Evidence File",
                 "file_name": file_name,
                 "file_path": str(source_file.resolve()),
-                "sha256": original_hash
+                "sha256": original_hash,
             })
 
             destination_file = folders["working_copy"] / f"{run_stamp}_{file_name}"
@@ -1009,7 +1067,7 @@ def main():
                 "role": "Working Copy",
                 "file_name": destination_file.name,
                 "file_path": str(destination_file.resolve()),
-                "sha256": copied_hash
+                "sha256": copied_hash,
             })
 
             if original_hash == copied_hash:
@@ -1064,53 +1122,55 @@ def main():
         lookups = build_resolution_lookups(
             working_database_path,
             structure,
-            log_lines
+            log_lines,
         )
 
     log_lines.append("")
-    log_lines.append("Basic Message Extraction")
+    log_lines.append("Message Extraction and Categorization")
     log_lines.append("-" * 70)
 
+    message_counts = {
+        "all": 0,
+        "text": 0,
+        "media": 0,
+        "system": 0,
+        "other": 0,
+    }
+
     selected_records_exported = 0
-    html_source_csv = message_export_path
-    report_title = "SACS WEP WhatsApp Timeline Report"
+    chats_summarized = 0
+    html_report_records = 0
+
+    html_source_csv = export_paths["all_messages"]
+    report_title = "SACS WEP Full WhatsApp Timeline Report"
 
     if structure:
-        records_exported = extract_messages_basic(
+        message_counts = extract_messages(
             working_database_path,
             structure,
-            message_export_path,
+            export_paths,
             log_lines,
             lookups,
-            target_timezone
+            target_timezone,
         )
 
-        if records_exported > 0:
-            export_chat_summary(
-                message_csv_path=message_export_path,
+        if message_counts["all"] > 0:
+            chats_summarized = export_chat_summary(
+                message_csv_path=export_paths["all_messages"],
                 summary_csv_path=chat_summary_path,
-                log_lines=log_lines
-            )
-
-            export_media_references(
-                message_csv_path=message_export_path,
-                media_csv_path=media_export_path,
-                log_lines=log_lines
+                log_lines=log_lines,
             )
 
             selected_records_exported = export_selected_chat(
-                message_csv_path=message_export_path,
+                message_csv_path=export_paths["all_messages"],
                 selected_csv_path=selected_chat_path,
                 chat_filter=args.chat_filter,
-                log_lines=log_lines
+                log_lines=log_lines,
             )
 
             if args.chat_filter and selected_records_exported > 0:
                 html_source_csv = selected_chat_path
                 report_title = "SACS WEP Selected Chat Timeline Report"
-            else:
-                html_source_csv = message_export_path
-                report_title = "SACS WEP Full WhatsApp Timeline Report"
 
             log_lines.append("")
             log_lines.append("HTML Timeline Report")
@@ -1118,7 +1178,7 @@ def main():
 
             report_limit = None if args.report_limit == 0 else args.report_limit
 
-            generate_html_timeline_report(
+            html_report_records = generate_html_timeline_report(
                 csv_source_path=html_source_csv,
                 html_report_path=html_report_path,
                 case_id=case_id,
@@ -1126,13 +1186,41 @@ def main():
                 chat_filter=args.chat_filter,
                 record_limit=report_limit,
                 timezone_offset=args.timezone_offset,
-                log_lines=log_lines
+                log_lines=log_lines,
             )
 
     else:
         log_lines.append("[WARNING] Message extraction skipped because database structure was not available.")
 
     completed_at = datetime.now().isoformat(timespec="seconds")
+
+    summary_data = {
+        "Tool Name": SCRIPT_NAME,
+        "Tool Version": SCRIPT_VERSION,
+        "Case ID": case_id,
+        "Started At": started_at,
+        "Completed At": completed_at,
+        "Timezone Offset": args.timezone_offset,
+        "Input Folder": input_folder.resolve(),
+        "Working Database": working_database_path.resolve(),
+        "Total Records Exported": message_counts["all"],
+        "Text Records": message_counts["text"],
+        "Media Records": message_counts["media"],
+        "System Records": message_counts["system"],
+        "Other Records": message_counts["other"],
+        "Chats Summarized": chats_summarized,
+        "Selected Chat Filter": args.chat_filter or "None",
+        "Selected Chat Records": selected_records_exported,
+        "HTML Report Records": html_report_records,
+    }
+
+    write_run_summary(summary_path, summary_data)
+
+    log_lines.append("")
+    log_lines.append("Run Summary")
+    log_lines.append("-" * 70)
+    for key, value in summary_data.items():
+        log_lines.append(f"{key}: {value}")
 
     log_lines.append("")
     log_lines.append("Output Folders")
@@ -1145,17 +1233,44 @@ def main():
     log_lines.append(f"Completed At: {completed_at}")
     log_lines.append("=" * 70)
 
-    write_hash_manifest(hash_path, hash_records)
-    write_log(log_path, log_lines)
+    write_text_file(log_path, log_lines)
 
-    print("[SUCCESS] SACS WEP v0.7.0 completed.")
+    output_files = [
+        structure_path,
+        summary_path,
+        log_path,
+        export_paths["all_messages"],
+        export_paths["text_messages"],
+        export_paths["media_messages"],
+        export_paths["system_messages"],
+        export_paths["other_messages"],
+        chat_summary_path,
+        html_report_path,
+    ]
+
+    if args.chat_filter and selected_chat_path.exists():
+        output_files.append(selected_chat_path)
+
+    write_output_hash_manifest(
+        hash_path=hash_path,
+        hash_records=hash_records,
+        output_files=output_files,
+        log_lines=log_lines,
+        case_id=case_id,
+    )
+
+    print("[SUCCESS] SACS WEP v0.8.1 completed.")
+    print(f"Total: {message_counts['all']}")
+    print(
+        f"Text: {message_counts['text']} | "
+        f"Media: {message_counts['media']} | "
+        f"System: {message_counts['system']} | "
+        f"Other: {message_counts['other']}"
+    )
     print(f"Case Output Folder: {folders['case_folder'].resolve()}")
     print(f"Hash Manifest: {hash_path.resolve()}")
     print(f"Processing Log: {log_path.resolve()}")
-    print(f"Database Structure: {structure_path.resolve()}")
-    print(f"Message Export: {message_export_path.resolve()}")
-    print(f"Chat Summary: {chat_summary_path.resolve()}")
-    print(f"Media References: {media_export_path.resolve()}")
+    print(f"Run Summary: {summary_path.resolve()}")
     print(f"HTML Report: {html_report_path.resolve()}")
 
     if args.chat_filter:
