@@ -69,50 +69,53 @@ Example Output
 
 ## Validation
 SACS WEP has been tested against real WhatsApp database data. Validation included:
-    message count verification against direct SQL queries
-    timestamp conversion checks (Apple epoch → UTC → local time)
-    direction field validation (ZISFROMME)
-    message text comparison
-    chat summary verification
-    selected chat extraction testing
-    hash integrity checks
+* message count verification against direct SQL queries
+* timestamp conversion checks (Apple epoch → UTC → local time)
+* direction field validation (ZISFROMME)
+* message text comparison
+* chat summary verification
+* selected chat extraction testing
+* hash integrity checks
+
 See: VALIDATION_REPORT.md
 
 ## Limitations
 SACS WEP is a forensic support tool, not a full forensic suite. Current limitations include:
-    media reference detection is broad and may include system/service records
-    chat/contact resolution depends on available database fields
-    schema variations across WhatsApp versions may affect field mapping
-    media file extraction and hashing are not yet implemented
-    Android WhatsApp databases are not currently supported
+* media reference detection is broad and may include system/service records
+* chat/contact resolution depends on available database fields
+* schema variations across WhatsApp versions may affect field mapping
+* media file extraction and hashing are not yet implemented
+* Android WhatsApp databases are not currently supported
 
 ## Forensic Disclaimer
 SACS WEP:
-does not acquire evidence
-does not bypass encryption or device locks
-does not recover overwritten deleted data
-does not prove authorship or intent
+* does not acquire evidence
+* does not bypass encryption or device locks
+* does not recover overwritten deleted data
+* does not prove authorship or intent
 
 All outputs must be reviewed alongside:
-original evidence
-acquisition records
-hash verification
-examiner analysis
+* original evidence
+* acquisition records
+* hash verification
+* examiner analysis
 
 This tool assists analysis but does not replace professional forensic judgment.
 
 ## Requirements
-Python 3.9+
-No external libraries required (standard library only)
+* Python 3.9+
+* No external libraries required (standard library only)
 
 ## Future Improvements (v0.8.0)
-refined media detection logic
-improved chat and contact resolution
-output file hashing
-schema adaptability enhancements
-media file linkage and hashing
+* refined media detection logic
+* improved chat and contact resolution
+* output file hashing
+* schema adaptability enhancements
+* media file linkage and hashing
 
 ## Author
 Ibrahim Sulaiman. A.
+
 CEO, SACS (Nig) Ltd.
+
 Digital Forensics & Cybercrime Investigations
