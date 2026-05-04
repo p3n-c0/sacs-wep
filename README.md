@@ -1,6 +1,7 @@
 # SACS WEP
 
 **SecureAfrica WhatsApp Evidence Processor**
+<img width="1046" height="633" alt="image" src="https://github.com/user-attachments/assets/c413a97c-9cdb-42eb-8150-f4a61d8573c5" />
 
 SACS WEP is a lightweight forensic support tool for processing extracted iOS WhatsApp `ChatStorage.sqlite` databases into readable CSV and HTML timeline outputs.
 
