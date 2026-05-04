@@ -60,23 +60,7 @@ python sacs_wep.py --input "C:\Users\YourName\Desktop\WhatsApp" --case-id "CASE-
 python sacs_wep.py --input "C:\Users\YourName\Desktop\WhatsApp" --case-id "CASE-003" --report-limit 0
 
 OPTIONAL STRUCTURE
-
-outputs/
-└── CASE-001/
-    ├── Working_Copy/
-    ├── Exports/
-    │   ├── all_messages_raw_[timestamp].csv
-    │   ├── chat_summary_[timestamp].csv
-    │   ├── selected_chat_timeline_[timestamp].csv
-    │   └── media_references_[timestamp].csv
-    ├── Reports/
-    │   └── timeline_report_[timestamp].html
-    ├── Hashes/
-    │   └── hash_manifest_[timestamp].txt
-    ├── Logs/
-    │   └── processing_log_[timestamp].txt
-    └── Case_Info/
-        └── database_structure_[timestamp].txt
+<img width="497" height="283" alt="image" src="https://github.com/user-attachments/assets/d4216d79-aa3c-41e3-b495-7ea35357b261" />
 
 Example Output
 
