@@ -42,8 +42,8 @@ without modifying the original evidence.
 
 ### 1. Prepare your evidence folder
 Place your extracted WhatsApp files in a folder. For example, C:\Users\YourName\Desktop\WhatsApp\ChatStorage.sqlite
-  (optional) ChatStorage.sqlite-wal
-  (optional) ChatStorage.sqlite-shm
+  * (optional) ChatStorage.sqlite-wal
+  * (optional) ChatStorage.sqlite-shm
 
 ### 2. Run the tool
 python sacs_wep.py --input "C:\Users\YourName\Desktop\WhatsApp" --case-id "CASE-001"
