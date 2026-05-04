@@ -6,6 +6,8 @@ SACS WEP is a lightweight forensic support tool for processing extracted iOS Wha
 
 It is designed for digital forensic examiners, cybercrime investigators, legal-support personnel, and students who need a structured way to review WhatsApp evidence after lawful extraction.
 
+Note: SACS WEP is an examiner-support utility. It does not acquire evidence, bypass encryption, recover overwritten deleted records, or provide legal conclusions.
+
 ## Current Version
 
 v0.7.0
