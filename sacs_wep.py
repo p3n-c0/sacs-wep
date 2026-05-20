@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 
 SCRIPT_NAME = "SACS WEP"
-SCRIPT_VERSION = "0.9.0"
+SCRIPT_VERSION = "0.9.1"
 
 
 def safe_filename_timestamp():
@@ -851,6 +851,118 @@ def export_selected_chat(message_csv_path, selected_csv_path, chat_filter, log_l
     return len(matched_rows)
 
 
+def export_participant_summary(message_csv_path, participant_summary_path, log_lines):
+    """
+    Generate participant-level activity summary per chat.
+
+    This reads the resolved all_messages CSV and aggregates message activity by:
+    - chat_jid/chat_name
+    - sender_jid/sender_name
+
+    It intentionally excludes unattributable sender rows where sender_jid is blank,
+    and it avoids treating group containers or broadcast identifiers as human participants.
+    """
+    if not message_csv_path.exists():
+        log_lines.append("[WARNING] Participant summary skipped because message CSV does not exist.")
+        return 0
+
+    participant_summary = {}
+
+    with open(message_csv_path, "r", encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+
+        for row in reader:
+            sender_jid = (row.get("sender_jid") or "").strip()
+            sender_name = (row.get("sender_name") or row.get("sender_pushname") or "").strip()
+            chat_jid = (row.get("chat_jid") or "").strip()
+            chat_name = (row.get("chat_name") or "").strip()
+            chat_reference = (row.get("chat_reference") or "").strip()
+            timestamp = row.get("timestamp_local", "") or row.get("timestamp_utc", "")
+            category = (row.get("message_category") or "other").strip().lower()
+
+            if not sender_jid:
+                continue
+
+            # Avoid counting group/broadcast containers as individual participants.
+            if sender_jid.endswith("@g.us") or sender_jid.endswith("@broadcast"):
+                continue
+
+            chat_key = chat_jid or chat_name or chat_reference or "UNKNOWN_CHAT"
+            participant_key = f"{chat_key}||{sender_jid}"
+
+            if participant_key not in participant_summary:
+                participant_summary[participant_key] = {
+                    "chat_identifier": chat_key,
+                    "chat_reference": chat_reference,
+                    "chat_jid": chat_jid,
+                    "chat_name": chat_name,
+                    "sender_jid": sender_jid,
+                    "sender_name": sender_name,
+                    "total_messages": 0,
+                    "text_count": 0,
+                    "media_count": 0,
+                    "system_count": 0,
+                    "other_count": 0,
+                    "first_seen": timestamp,
+                    "last_seen": timestamp,
+                }
+
+            item = participant_summary[participant_key]
+            item["total_messages"] += 1
+
+            if category == "text":
+                item["text_count"] += 1
+            elif category == "media":
+                item["media_count"] += 1
+            elif category == "system":
+                item["system_count"] += 1
+            else:
+                item["other_count"] += 1
+
+            if timestamp:
+                if not item["first_seen"] or timestamp < item["first_seen"]:
+                    item["first_seen"] = timestamp
+
+                if not item["last_seen"] or timestamp > item["last_seen"]:
+                    item["last_seen"] = timestamp
+
+    fieldnames = [
+        "chat_identifier",
+        "chat_reference",
+        "chat_jid",
+        "chat_name",
+        "sender_jid",
+        "sender_name",
+        "total_messages",
+        "text_count",
+        "media_count",
+        "system_count",
+        "other_count",
+        "first_seen",
+        "last_seen",
+    ]
+
+    try:
+        rows = sorted(
+            participant_summary.values(),
+            key=lambda item: (item["chat_identifier"], -item["total_messages"], item["sender_jid"]),
+        )
+
+        with open(participant_summary_path, "w", encoding="utf-8-sig", newline="") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        log_lines.append(f"[OK] Participant summary exported: {participant_summary_path.resolve()}")
+        log_lines.append(f"[OK] Participant summary entries: {len(rows)}")
+        return len(rows)
+
+    except PermissionError:
+        log_lines.append(f"[ERROR] Permission denied while writing: {participant_summary_path}")
+        log_lines.append("[HINT] Close the participant summary CSV if it is open.")
+        return 0
+
+
 def generate_html_timeline_report(csv_source_path, html_report_path, case_id, report_title, chat_filter, record_limit, timezone_offset, log_lines):
     if not csv_source_path.exists():
         log_lines.append("[WARNING] HTML report skipped because source CSV does not exist.")
@@ -1114,6 +1226,7 @@ def main():
     }
 
     chat_summary_path = folders["exports"] / f"chat_summary_{run_stamp}.csv"
+    participant_summary_path = folders["exports"] / f"participant_summary_{run_stamp}.csv"
     selected_chat_path = folders["exports"] / f"selected_chat_timeline_{run_stamp}.csv"
     html_report_path = folders["reports"] / f"timeline_report_{run_stamp}.html"
 
@@ -1207,6 +1320,7 @@ def main():
     message_counts = {"all": 0, "text": 0, "media": 0, "system": 0, "other": 0, "resolved_chat": 0, "resolved_sender": 0}
     selected_records_exported = 0
     chats_summarized = 0
+    participants_summarized = 0
     html_report_records = 0
 
     html_source_csv = export_paths["all_messages"]
@@ -1217,6 +1331,7 @@ def main():
 
         if message_counts["all"] > 0:
             chats_summarized = export_chat_summary(export_paths["all_messages"], chat_summary_path, log_lines)
+            participants_summarized = export_participant_summary(export_paths["all_messages"], participant_summary_path, log_lines)
             selected_records_exported = export_selected_chat(export_paths["all_messages"], selected_chat_path, args.chat_filter, log_lines)
 
             if args.chat_filter and selected_records_exported > 0:
@@ -1264,6 +1379,7 @@ def main():
         "Chat Lookup Entries": len(lookups.get("chat_lookup", {})),
         "Group Member Lookup Entries": len(lookups.get("group_member_lookup", {})),
         "Chats Summarized": chats_summarized,
+        "Participants Summarized": participants_summarized,
         "Selected Chat Filter": args.chat_filter or "None",
         "Selected Chat Records": selected_records_exported,
         "HTML Report Records": html_report_records,
@@ -1300,6 +1416,7 @@ def main():
         export_paths["system_messages"],
         export_paths["other_messages"],
         chat_summary_path,
+        participant_summary_path,
         html_report_path,
     ]
 
@@ -1308,7 +1425,7 @@ def main():
 
     write_output_hash_manifest(hash_path, hash_records, output_files, log_lines, case_id)
 
-    print("[SUCCESS] SACS WEP v0.9.0 completed.")
+    print("[SUCCESS] SACS WEP v0.9.1 completed.")
     print(f"Total: {message_counts['all']}")
     print(f"Text: {message_counts['text']} | Media: {message_counts['media']} | System: {message_counts['system']} | Other: {message_counts['other']}")
     print(f"Resolved Chat Records: {message_counts.get('resolved_chat', 0)}")
@@ -1317,6 +1434,7 @@ def main():
     print(f"Hash Manifest: {hash_path.resolve()}")
     print(f"Processing Log: {log_path.resolve()}")
     print(f"Run Summary: {summary_path.resolve()}")
+    print(f"Participant Summary: {participant_summary_path.resolve()}")
     print(f"HTML Report: {html_report_path.resolve()}")
 
     if args.chat_filter:
