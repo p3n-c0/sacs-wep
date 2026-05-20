@@ -87,24 +87,13 @@ This assists with:
 
 # Folder Structure
 Example output structure:
-outputs/
-└── CASE-ID/
-    ├── Case_Info/
-    ├── Exports/
-    ├── Hashes/
-    ├── Logs/
-    ├── Reports/
-    └── Working_Copy/
+<img width="462" height="142" alt="image" src="https://github.com/user-attachments/assets/466fb8b2-be60-426a-ba91-cc99fa27eb9b" />
+
 
 # Example Outputs
 ## Exports
-- all_messages_raw.csv
-- text_messages.csv
-- media_messages.csv
-- system_messages.csv
-- other_messages.csv
-- chat_summary.csv
-- selected_chat_timeline.csv
+<img width="451" height="125" alt="image" src="https://github.com/user-attachments/assets/6cf86097-d4b1-4aa1-9161-f7df4c8f9678" />
+
 
 ## Reports
 - timeline_report.html
@@ -132,11 +121,8 @@ cd sacs-wep
 ## Quick Start
 Place your WhatsApp evidence files inside a folder.
 Example:
-Evidence/
-└── WhatsApp/
-    ├── ChatStorage.sqlite
-    ├── ChatStorage.sqlite-wal
-    └── ChatStorage.sqlite-shm
+<img width="446" height="93" alt="image" src="https://github.com/user-attachments/assets/a0bbdacf-3b53-4c4c-b75c-940262d0202c" />
+
 
 Run
 python sacs_wep.py --input "path_to_whatsapp" --case-id "SACS-CASE-001"
