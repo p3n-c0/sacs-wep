@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 
 SCRIPT_NAME = "SACS WEP"
-SCRIPT_VERSION = "0.9.0"
+SCRIPT_VERSION = "0.8.1"
 
 
 def safe_filename_timestamp():
@@ -183,177 +183,36 @@ def choose_first_existing_column(columns, candidates):
     return None
 
 
-def safe_row_value(row, column_name):
-    if not column_name:
-        return ""
-
-    try:
-        value = row[column_name]
-        return "" if value is None else value
-    except Exception:
-        return ""
-
-
-def build_profile_pushname_lookup(database_path, structure, log_lines):
-    table_name = "ZWAPROFILEPUSHNAME"
-    lookup = {}
-
+def fetch_lookup_table(database_path, structure, table_name, key_candidates, value_candidates):
     if table_name not in structure:
-        log_lines.append("[INFO] ZWAPROFILEPUSHNAME table not found.")
-        return lookup
+        return {}
 
     columns = get_column_names(structure, table_name)
+    key_col = choose_first_existing_column(columns, key_candidates)
+    value_col = choose_first_existing_column(columns, value_candidates)
 
-    if "ZJID" not in columns or "ZPUSHNAME" not in columns:
-        log_lines.append("[INFO] ZWAPROFILEPUSHNAME does not contain expected ZJID/ZPUSHNAME columns.")
-        return lookup
+    if not key_col or not value_col:
+        return {}
+
+    lookup = {}
 
     connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     cursor = connection.cursor()
 
     try:
-        cursor.execute("SELECT ZJID, ZPUSHNAME FROM ZWAPROFILEPUSHNAME;")
+        cursor.execute(f"SELECT {key_col}, {value_col} FROM {table_name};")
         rows = cursor.fetchall()
 
         for row in rows:
-            jid = row["ZJID"]
-            pushname = row["ZPUSHNAME"]
+            key = row[key_col]
+            value = row[value_col]
 
-            if jid and pushname:
-                lookup[str(jid)] = str(pushname)
+            if key is not None and value is not None:
+                lookup[str(key)] = str(value)
 
-        log_lines.append(f"[OK] Profile pushname lookup built: {len(lookup)} entries")
-
-    except sqlite3.DatabaseError as error:
-        log_lines.append(f"[WARNING] Failed to build profile pushname lookup: {error}")
-    finally:
-        connection.close()
-
-    return lookup
-
-
-def build_chat_session_lookup(database_path, structure, profile_lookup, log_lines):
-    table_name = "ZWACHATSESSION"
-    lookup = {}
-
-    if table_name not in structure:
-        log_lines.append("[INFO] ZWACHATSESSION table not found.")
-        return lookup
-
-    columns = get_column_names(structure, table_name)
-    required = ["Z_PK"]
-
-    if not all(col in columns for col in required):
-        log_lines.append("[INFO] ZWACHATSESSION does not contain expected Z_PK column.")
-        return lookup
-
-    jid_col = choose_first_existing_column(columns, ["ZCONTACTJID", "ZGROUPJID", "ZCHATIDENTIFIER"])
-    name_col = choose_first_existing_column(columns, ["ZPARTNERNAME", "ZTITLE", "ZNAME"])
-    last_text_col = choose_first_existing_column(columns, ["ZLASTMESSAGETEXT"])
-    session_type_col = choose_first_existing_column(columns, ["ZSESSIONTYPE"])
-
-    select_columns = ["Z_PK"]
-    for col in [jid_col, name_col, last_text_col, session_type_col]:
-        if col and col not in select_columns:
-            select_columns.append(col)
-
-    connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute(f"SELECT {', '.join(select_columns)} FROM {table_name};")
-        rows = cursor.fetchall()
-
-        for row in rows:
-            chat_pk = safe_row_value(row, "Z_PK")
-            chat_jid = safe_row_value(row, jid_col)
-            chat_name = safe_row_value(row, name_col)
-            last_message_text = safe_row_value(row, last_text_col)
-            session_type = safe_row_value(row, session_type_col)
-
-            if not chat_name and chat_jid:
-                chat_name = profile_lookup.get(str(chat_jid), "")
-
-            lookup[str(chat_pk)] = {
-                "chat_jid": str(chat_jid) if chat_jid else "",
-                "chat_name": str(chat_name) if chat_name else "",
-                "chat_session_type": str(session_type) if session_type != "" else "",
-                "chat_last_message_text": str(last_message_text) if last_message_text else "",
-            }
-
-        log_lines.append(f"[OK] Chat session lookup built: {len(lookup)} entries")
-
-    except sqlite3.DatabaseError as error:
-        log_lines.append(f"[WARNING] Failed to build chat session lookup: {error}")
-    finally:
-        connection.close()
-
-    return lookup
-
-
-def build_group_member_lookup(database_path, structure, profile_lookup, log_lines):
-    table_name = "ZWAGROUPMEMBER"
-    lookup = {}
-
-    if table_name not in structure:
-        log_lines.append("[INFO] ZWAGROUPMEMBER table not found.")
-        return lookup
-
-    columns = get_column_names(structure, table_name)
-
-    if "Z_PK" not in columns:
-        log_lines.append("[INFO] ZWAGROUPMEMBER does not contain expected Z_PK column.")
-        return lookup
-
-    member_jid_col = choose_first_existing_column(columns, ["ZMEMBERJID", "ZCONTACTJID", "ZWHATSAPPID"])
-    contact_name_col = choose_first_existing_column(columns, ["ZCONTACTNAME", "ZFULLNAME"])
-    first_name_col = choose_first_existing_column(columns, ["ZFIRSTNAME"])
-    contact_identifier_col = choose_first_existing_column(columns, ["ZCONTACTIDENTIFIER"])
-    is_admin_col = choose_first_existing_column(columns, ["ZISADMIN"])
-    is_active_col = choose_first_existing_column(columns, ["ZISACTIVE"])
-    chat_session_col = choose_first_existing_column(columns, ["ZCHATSESSION"])
-
-    select_columns = ["Z_PK"]
-    for col in [member_jid_col, contact_name_col, first_name_col, contact_identifier_col, is_admin_col, is_active_col, chat_session_col]:
-        if col and col not in select_columns:
-            select_columns.append(col)
-
-    connection = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute(f"SELECT {', '.join(select_columns)} FROM {table_name};")
-        rows = cursor.fetchall()
-
-        for row in rows:
-            member_pk = safe_row_value(row, "Z_PK")
-            member_jid = safe_row_value(row, member_jid_col)
-            contact_name = safe_row_value(row, contact_name_col)
-            first_name = safe_row_value(row, first_name_col)
-            contact_identifier = safe_row_value(row, contact_identifier_col)
-            is_admin = safe_row_value(row, is_admin_col)
-            is_active = safe_row_value(row, is_active_col)
-            chat_session = safe_row_value(row, chat_session_col)
-
-            profile_name = profile_lookup.get(str(member_jid), "") if member_jid else ""
-            resolved_name = contact_name or first_name or profile_name
-
-            lookup[str(member_pk)] = {
-                "group_member_jid": str(member_jid) if member_jid else "",
-                "group_member_name": str(resolved_name) if resolved_name else "",
-                "group_member_contact_identifier": str(contact_identifier) if contact_identifier else "",
-                "group_member_is_admin": str(is_admin) if is_admin != "" else "",
-                "group_member_is_active": str(is_active) if is_active != "" else "",
-                "group_member_chat_reference": str(chat_session) if chat_session != "" else "",
-            }
-
-        log_lines.append(f"[OK] Group member lookup built: {len(lookup)} entries")
-
-    except sqlite3.DatabaseError as error:
-        log_lines.append(f"[WARNING] Failed to build group member lookup: {error}")
+    except sqlite3.DatabaseError:
+        pass
     finally:
         connection.close()
 
@@ -364,14 +223,72 @@ def build_resolution_lookups(database_path, structure, log_lines):
     log_lines.append("Resolution Lookup Building")
     log_lines.append("-" * 70)
 
-    profile_lookup = build_profile_pushname_lookup(database_path, structure, log_lines)
-    chat_lookup = build_chat_session_lookup(database_path, structure, profile_lookup, log_lines)
-    group_member_lookup = build_group_member_lookup(database_path, structure, profile_lookup, log_lines)
+    chat_lookup = {}
+
+    possible_chat_tables = [
+        "ZWACHATSESSION",
+        "ZWACHAT",
+        "ZWACONVERSATION",
+    ]
+
+    for table in possible_chat_tables:
+        partial_lookup = fetch_lookup_table(
+            database_path=database_path,
+            structure=structure,
+            table_name=table,
+            key_candidates=["Z_PK"],
+            value_candidates=[
+                "ZCONTACTJID",
+                "ZGROUPJID",
+                "ZPARTNERNAME",
+                "ZTITLE",
+                "ZNAME",
+                "ZCHATIDENTIFIER",
+            ],
+        )
+
+        if partial_lookup:
+            chat_lookup.update(partial_lookup)
+            log_lines.append(f"[OK] Chat lookup built from {table}: {len(partial_lookup)} entries")
+
+    if not chat_lookup:
+        log_lines.append("[INFO] No chat lookup could be built from known chat tables.")
+
+    contact_lookup = {}
+
+    possible_contact_tables = [
+        "ZWAADDRESSBOOKCONTACT",
+        "ZWAPROFILEPUSHNAME",
+        "ZWAGROUPMEMBER",
+    ]
+
+    for table in possible_contact_tables:
+        partial_lookup = fetch_lookup_table(
+            database_path=database_path,
+            structure=structure,
+            table_name=table,
+            key_candidates=["Z_PK"],
+            value_candidates=[
+                "ZFULLNAME",
+                "ZFIRSTNAME",
+                "ZPUSHNAME",
+                "ZMEMBERJID",
+                "ZCONTACTJID",
+                "ZPHONE",
+                "ZWHATSAPPID",
+            ],
+        )
+
+        if partial_lookup:
+            contact_lookup.update(partial_lookup)
+            log_lines.append(f"[OK] Contact lookup built from {table}: {len(partial_lookup)} entries")
+
+    if not contact_lookup:
+        log_lines.append("[INFO] No contact lookup could be built from known contact/profile tables.")
 
     return {
-        "profile_lookup": profile_lookup,
         "chat_lookup": chat_lookup,
-        "group_member_lookup": group_member_lookup,
+        "contact_lookup": contact_lookup,
     }
 
 
@@ -386,6 +303,14 @@ def interpret_direction(direction_raw):
 
 
 def categorize_message(message_type_raw):
+    """
+    Validation-driven categorization based on Case A distribution.
+
+    Type 0: text
+    Types 1, 2, 3: media
+    Types 6, 10: system/service
+    Everything else: other
+    """
     mtype = str(message_type_raw).strip()
 
     if mtype == "0":
@@ -415,96 +340,54 @@ def interpret_message_type(message_type_raw):
     return labels.get(mtype, f"Other / unmapped message type ({mtype})")
 
 
-def resolve_sender(sender_jid_raw, message_pushname, group_member_info, profile_lookup, chat_jid):
-    """
-    Resolve the likely sender for a message.
-
-    Important forensic rule:
-    In group/system-event rows, ZFROMJID may contain the group JID instead of the
-    actual participant. When a valid ZGROUPMEMBER reference is available, prefer
-    the group member identity over the group/chat JID for sender attribution.
-    """
-    sender_jid = str(sender_jid_raw).strip() if sender_jid_raw else ""
-    chat_jid = str(chat_jid).strip() if chat_jid else ""
-
-    group_member_jid = group_member_info.get("group_member_jid", "")
-    group_member_name = group_member_info.get("group_member_name", "")
-
-    sender_jid_looks_like_container = (
-        sender_jid == chat_jid
-        or sender_jid.endswith("@g.us")
-        or sender_jid.endswith("@broadcast")
-    )
-
-    used_group_member_identity = False
-
-    if group_member_jid and (not sender_jid or sender_jid_looks_like_container):
-        sender_jid = group_member_jid
-        used_group_member_identity = True
-
-    raw_pushname = str(message_pushname).strip() if message_pushname else ""
-    profile_name = profile_lookup.get(sender_jid, "") if sender_jid else ""
-
-    if used_group_member_identity:
-        sender_name = group_member_name or profile_name or raw_pushname
-    else:
-        sender_name = raw_pushname or group_member_name or profile_name
-
-    sender_pushname = raw_pushname or profile_name or group_member_name
-
-    return sender_jid, sender_name, sender_pushname
-
-
 def extract_messages(database_path, structure, export_paths, log_lines, lookups, target_timezone):
     table_name = "ZWAMESSAGE"
 
     if table_name not in structure:
         log_lines.append("[WARNING] ZWAMESSAGE table not found. Message extraction skipped.")
-        return {"all": 0, "text": 0, "media": 0, "system": 0, "other": 0}
+        return {
+            "all": 0,
+            "text": 0,
+            "media": 0,
+            "system": 0,
+            "other": 0,
+        }
 
     columns = get_column_names(structure, table_name)
 
     id_col = choose_first_existing_column(columns, ["Z_PK", "Z_ENT", "Z_OPT"])
     text_col = choose_first_existing_column(columns, ["ZTEXT", "ZMESSAGETEXT", "ZBODY"])
     timestamp_col = choose_first_existing_column(columns, ["ZMESSAGEDATE", "ZDATE", "ZSENTDATE"])
-    sent_date_col = choose_first_existing_column(columns, ["ZSENTDATE"])
     from_me_col = choose_first_existing_column(columns, ["ZISFROMME", "ZFROMME"])
     message_type_col = choose_first_existing_column(columns, ["ZMESSAGETYPE", "ZTYPE"])
     media_col = choose_first_existing_column(columns, ["ZMEDIAITEM", "ZMEDIASECTIONID"])
     chat_col = choose_first_existing_column(columns, ["ZCHATSESSION", "ZCHAT", "ZCONVERSATION"])
-    group_member_col = choose_first_existing_column(columns, ["ZGROUPMEMBER"])
-    from_jid_col = choose_first_existing_column(columns, ["ZFROMJID", "ZSENDERJID"])
-    to_jid_col = choose_first_existing_column(columns, ["ZTOJID"])
-    pushname_col = choose_first_existing_column(columns, ["ZPUSHNAME"])
-    stanza_id_col = choose_first_existing_column(columns, ["ZSTANZAID"])
-    message_status_col = choose_first_existing_column(columns, ["ZMESSAGESTATUS"])
-    group_event_type_col = choose_first_existing_column(columns, ["ZGROUPEVENTTYPE"])
+    sender_col = choose_first_existing_column(columns, ["ZFROMJID", "ZSENDERJID", "ZGROUPMEMBER", "ZCONTACT"])
 
     selected_columns = []
 
     for col in [
         id_col,
         chat_col,
-        group_member_col,
-        from_jid_col,
-        to_jid_col,
-        pushname_col,
+        sender_col,
         from_me_col,
         timestamp_col,
-        sent_date_col,
         message_type_col,
-        message_status_col,
-        group_event_type_col,
         text_col,
         media_col,
-        stanza_id_col,
     ]:
         if col and col not in selected_columns:
             selected_columns.append(col)
 
     if not selected_columns:
         log_lines.append("[WARNING] No usable columns found in ZWAMESSAGE.")
-        return {"all": 0, "text": 0, "media": 0, "system": 0, "other": 0}
+        return {
+            "all": 0,
+            "text": 0,
+            "media": 0,
+            "system": 0,
+            "other": 0,
+        }
 
     order_col = timestamp_col if timestamp_col else id_col
 
@@ -524,43 +407,32 @@ def extract_messages(database_path, structure, export_paths, log_lines, lookups,
     except sqlite3.DatabaseError as error:
         log_lines.append(f"[ERROR] Message extraction failed: {error}")
         connection.close()
-        return {"all": 0, "text": 0, "media": 0, "system": 0, "other": 0}
+        return {
+            "all": 0,
+            "text": 0,
+            "media": 0,
+            "system": 0,
+            "other": 0,
+        }
 
     chat_lookup = lookups.get("chat_lookup", {})
-    group_member_lookup = lookups.get("group_member_lookup", {})
-    profile_lookup = lookups.get("profile_lookup", {})
+    contact_lookup = lookups.get("contact_lookup", {})
 
     output_fields = [
         "source_table",
         "message_id",
-        "stanza_id",
         "chat_reference",
-        "chat_jid",
-        "chat_name",
-        "chat_session_type",
-        "group_member_reference",
-        "group_member_jid",
-        "group_member_name",
-        "group_member_contact_identifier",
-        "group_member_is_admin",
-        "group_member_is_active",
-        "sender_jid",
-        "sender_name",
-        "sender_pushname",
-        "recipient_jid",
+        "chat_resolved",
+        "sender_reference",
+        "sender_resolved",
         "direction_raw",
         "direction_interpreted",
         "timestamp_raw",
         "timestamp_utc",
         "timestamp_local",
-        "sent_timestamp_raw",
-        "sent_timestamp_utc",
-        "sent_timestamp_local",
         "message_type_raw",
         "message_type_interpreted",
         "message_category",
-        "message_status_raw",
-        "group_event_type_raw",
         "message_text",
         "media_reference",
         "blank_text_indicator",
@@ -573,44 +445,22 @@ def extract_messages(database_path, structure, export_paths, log_lines, lookups,
     other_rows = []
 
     for row in rows:
-        message_id = safe_row_value(row, id_col)
-        chat_reference = safe_row_value(row, chat_col)
-        group_member_reference = safe_row_value(row, group_member_col)
-        sender_jid_raw = safe_row_value(row, from_jid_col)
-        recipient_jid = safe_row_value(row, to_jid_col)
-        message_pushname = safe_row_value(row, pushname_col)
-        direction_raw = safe_row_value(row, from_me_col)
-        timestamp_raw = safe_row_value(row, timestamp_col)
-        sent_timestamp_raw = safe_row_value(row, sent_date_col)
-        message_type_raw = safe_row_value(row, message_type_col)
-        message_status_raw = safe_row_value(row, message_status_col)
-        group_event_type_raw = safe_row_value(row, group_event_type_col)
-        message_text = safe_row_value(row, text_col)
-        media_reference = safe_row_value(row, media_col)
-        stanza_id = safe_row_value(row, stanza_id_col)
+        message_id = row[id_col] if id_col else ""
+        chat_reference = row[chat_col] if chat_col else ""
+        sender_reference = row[sender_col] if sender_col else ""
+        direction_raw = row[from_me_col] if from_me_col else ""
+        timestamp_raw = row[timestamp_col] if timestamp_col else ""
+        message_type_raw = row[message_type_col] if message_type_col else ""
+        message_text = row[text_col] if text_col else ""
+        media_reference = row[media_col] if media_col else ""
 
-        timestamp_utc, timestamp_local = convert_apple_timestamp(timestamp_raw, target_timezone)
-        sent_timestamp_utc, sent_timestamp_local = convert_apple_timestamp(sent_timestamp_raw, target_timezone)
-
-        chat_info = chat_lookup.get(str(chat_reference), {})
-        chat_jid = chat_info.get("chat_jid", "")
-        chat_name = chat_info.get("chat_name", "")
-        chat_session_type = chat_info.get("chat_session_type", "")
-
-        group_member_info = group_member_lookup.get(str(group_member_reference), {})
-        group_member_jid = group_member_info.get("group_member_jid", "")
-        group_member_name = group_member_info.get("group_member_name", "")
-        group_member_contact_identifier = group_member_info.get("group_member_contact_identifier", "")
-        group_member_is_admin = group_member_info.get("group_member_is_admin", "")
-        group_member_is_active = group_member_info.get("group_member_is_active", "")
-
-        sender_jid, sender_name, sender_pushname = resolve_sender(
-            sender_jid_raw=sender_jid_raw,
-            message_pushname=message_pushname,
-            group_member_info=group_member_info,
-            profile_lookup=profile_lookup,
-            chat_jid=chat_jid,
+        timestamp_utc, timestamp_local = convert_apple_timestamp(
+            timestamp_raw,
+            target_timezone,
         )
+
+        chat_resolved = chat_lookup.get(str(chat_reference), "")
+        sender_resolved = contact_lookup.get(str(sender_reference), "")
 
         message_category = categorize_message(message_type_raw)
 
@@ -622,34 +472,18 @@ def extract_messages(database_path, structure, export_paths, log_lines, lookups,
         record = {
             "source_table": table_name,
             "message_id": message_id,
-            "stanza_id": stanza_id,
             "chat_reference": chat_reference,
-            "chat_jid": chat_jid,
-            "chat_name": chat_name,
-            "chat_session_type": chat_session_type,
-            "group_member_reference": group_member_reference,
-            "group_member_jid": group_member_jid,
-            "group_member_name": group_member_name,
-            "group_member_contact_identifier": group_member_contact_identifier,
-            "group_member_is_admin": group_member_is_admin,
-            "group_member_is_active": group_member_is_active,
-            "sender_jid": sender_jid,
-            "sender_name": sender_name,
-            "sender_pushname": sender_pushname,
-            "recipient_jid": recipient_jid,
+            "chat_resolved": chat_resolved,
+            "sender_reference": sender_reference,
+            "sender_resolved": sender_resolved,
             "direction_raw": direction_raw,
             "direction_interpreted": interpret_direction(direction_raw),
             "timestamp_raw": timestamp_raw,
             "timestamp_utc": timestamp_utc,
             "timestamp_local": timestamp_local,
-            "sent_timestamp_raw": sent_timestamp_raw,
-            "sent_timestamp_utc": sent_timestamp_utc,
-            "sent_timestamp_local": sent_timestamp_local,
             "message_type_raw": message_type_raw,
             "message_type_interpreted": interpret_message_type(message_type_raw),
             "message_category": message_category,
-            "message_status_raw": message_status_raw,
-            "group_event_type_raw": group_event_type_raw,
             "message_text": message_text,
             "media_reference": media_reference,
             "blank_text_indicator": blank_text_indicator,
@@ -686,17 +520,12 @@ def extract_messages(database_path, structure, export_paths, log_lines, lookups,
             log_lines.append(f"[ERROR] Permission denied while writing: {path}")
             log_lines.append("[HINT] Close output files if they are open in Excel or another program.")
 
-    resolved_chat_count = sum(1 for item in all_rows if item.get("chat_jid") or item.get("chat_name"))
-    resolved_sender_count = sum(1 for item in all_rows if item.get("sender_jid") or item.get("sender_name"))
-
-    log_lines.append("[OK] Message extraction, categorization, and entity resolution completed.")
+    log_lines.append("[OK] Message extraction and categorization completed.")
     log_lines.append(f"[OK] Total records exported: {len(all_rows)}")
     log_lines.append(f"[OK] Text records: {len(text_rows)}")
     log_lines.append(f"[OK] Media records: {len(media_rows)}")
     log_lines.append(f"[OK] System records: {len(system_rows)}")
     log_lines.append(f"[OK] Other records: {len(other_rows)}")
-    log_lines.append(f"[OK] Records with resolved chat info: {resolved_chat_count}")
-    log_lines.append(f"[OK] Records with resolved sender info: {resolved_sender_count}")
 
     return {
         "all": len(all_rows),
@@ -704,8 +533,6 @@ def extract_messages(database_path, structure, export_paths, log_lines, lookups,
         "media": len(media_rows),
         "system": len(system_rows),
         "other": len(other_rows),
-        "resolved_chat": resolved_chat_count,
-        "resolved_sender": resolved_sender_count,
     }
 
 
@@ -720,35 +547,18 @@ def export_chat_summary(message_csv_path, summary_csv_path, log_lines):
         reader = csv.DictReader(csv_file)
 
         for row in reader:
-            chat_key = row.get("chat_jid") or row.get("chat_name") or row.get("chat_reference") or "UNKNOWN_CHAT"
+            chat_key = row.get("chat_resolved") or row.get("chat_reference") or "UNKNOWN_CHAT"
             timestamp = row.get("timestamp_local", "") or row.get("timestamp_utc", "")
 
             if chat_key not in summary:
                 summary[chat_key] = {
                     "chat_identifier": chat_key,
-                    "chat_reference": row.get("chat_reference", ""),
-                    "chat_jid": row.get("chat_jid", ""),
-                    "chat_name": row.get("chat_name", ""),
                     "message_count": 0,
                     "first_timestamp": timestamp,
                     "last_timestamp": timestamp,
-                    "text_count": 0,
-                    "media_count": 0,
-                    "system_count": 0,
-                    "other_count": 0,
                 }
 
             summary[chat_key]["message_count"] += 1
-
-            category = row.get("message_category", "other")
-            if category == "text":
-                summary[chat_key]["text_count"] += 1
-            elif category == "media":
-                summary[chat_key]["media_count"] += 1
-            elif category == "system":
-                summary[chat_key]["system_count"] += 1
-            else:
-                summary[chat_key]["other_count"] += 1
 
             if timestamp:
                 if not summary[chat_key]["first_timestamp"] or timestamp < summary[chat_key]["first_timestamp"]:
@@ -761,14 +571,7 @@ def export_chat_summary(message_csv_path, summary_csv_path, log_lines):
         with open(summary_csv_path, "w", encoding="utf-8-sig", newline="") as csv_file:
             fieldnames = [
                 "chat_identifier",
-                "chat_reference",
-                "chat_jid",
-                "chat_name",
                 "message_count",
-                "text_count",
-                "media_count",
-                "system_count",
-                "other_count",
                 "first_timestamp",
                 "last_timestamp",
             ]
@@ -803,14 +606,9 @@ def export_selected_chat(message_csv_path, selected_csv_path, chat_filter, log_l
 
     searchable_fields = [
         "chat_reference",
-        "chat_jid",
-        "chat_name",
-        "sender_jid",
-        "sender_name",
-        "sender_pushname",
-        "recipient_jid",
-        "group_member_jid",
-        "group_member_name",
+        "chat_resolved",
+        "sender_reference",
+        "sender_resolved",
         "message_text",
     ]
 
@@ -851,7 +649,16 @@ def export_selected_chat(message_csv_path, selected_csv_path, chat_filter, log_l
     return len(matched_rows)
 
 
-def generate_html_timeline_report(csv_source_path, html_report_path, case_id, report_title, chat_filter, record_limit, timezone_offset, log_lines):
+def generate_html_timeline_report(
+    csv_source_path,
+    html_report_path,
+    case_id,
+    report_title,
+    chat_filter,
+    record_limit,
+    timezone_offset,
+    log_lines,
+):
     if not csv_source_path.exists():
         log_lines.append("[WARNING] HTML report skipped because source CSV does not exist.")
         return 0
@@ -870,6 +677,7 @@ def generate_html_timeline_report(csv_source_path, html_report_path, case_id, re
     generated_on = datetime.now().isoformat(timespec="seconds")
 
     html_parts = []
+
     html_parts.append("<!DOCTYPE html>")
     html_parts.append("<html lang='en'>")
     html_parts.append("<head>")
@@ -879,33 +687,105 @@ def generate_html_timeline_report(csv_source_path, html_report_path, case_id, re
 
     html_parts.append("""
 <style>
-body { font-family: Arial, Helvetica, sans-serif; background: #f5f7fa; color: #1f2933; margin: 0; padding: 0; }
-header { background: #111827; color: white; padding: 24px 36px; }
-header h1 { margin: 0 0 8px 0; font-size: 24px; }
-header p { margin: 4px 0; color: #d1d5db; }
-main { padding: 28px 36px; }
-.notice { background: #fff7ed; border-left: 5px solid #f97316; padding: 14px 16px; margin-bottom: 24px; line-height: 1.5; }
-.metadata { background: #ffffff; padding: 18px; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 24px; }
-.metadata table { width: 100%; border-collapse: collapse; }
-.metadata td { padding: 8px; border-bottom: 1px solid #e5e7eb; }
-.message-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
-.message-meta { font-size: 13px; color: #4b5563; margin-bottom: 10px; }
-.direction { font-weight: bold; }
-.message-text { white-space: pre-wrap; line-height: 1.55; font-size: 15px; }
-.badge { display: inline-block; background: #e5e7eb; color: #111827; padding: 3px 7px; border-radius: 5px; font-size: 12px; margin-right: 4px; margin-bottom: 4px; }
-.warning { color: #b45309; font-size: 13px; margin-top: 8px; }
-footer { margin-top: 32px; padding-top: 18px; border-top: 1px solid #d1d5db; color: #6b7280; font-size: 13px; }
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f5f7fa;
+    color: #1f2933;
+    margin: 0;
+    padding: 0;
+}
+header {
+    background: #111827;
+    color: white;
+    padding: 24px 36px;
+}
+header h1 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+}
+header p {
+    margin: 4px 0;
+    color: #d1d5db;
+}
+main {
+    padding: 28px 36px;
+}
+.notice {
+    background: #fff7ed;
+    border-left: 5px solid #f97316;
+    padding: 14px 16px;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+.metadata {
+    background: #ffffff;
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    margin-bottom: 24px;
+}
+.metadata table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.metadata td {
+    padding: 8px;
+    border-bottom: 1px solid #e5e7eb;
+}
+.message-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+}
+.message-meta {
+    font-size: 13px;
+    color: #4b5563;
+    margin-bottom: 10px;
+}
+.direction {
+    font-weight: bold;
+}
+.message-text {
+    white-space: pre-wrap;
+    line-height: 1.55;
+    font-size: 15px;
+}
+.badge {
+    display: inline-block;
+    background: #e5e7eb;
+    color: #111827;
+    padding: 3px 7px;
+    border-radius: 5px;
+    font-size: 12px;
+    margin-right: 4px;
+}
+.warning {
+    color: #b45309;
+    font-size: 13px;
+    margin-top: 8px;
+}
+footer {
+    margin-top: 32px;
+    padding-top: 18px;
+    border-top: 1px solid #d1d5db;
+    color: #6b7280;
+    font-size: 13px;
+}
 </style>
 """)
 
     html_parts.append("</head>")
     html_parts.append("<body>")
+
     html_parts.append("<header>")
     html_parts.append(f"<h1>{html.escape(report_title)}</h1>")
     html_parts.append(f"<p>Case ID: {html.escape(case_id)}</p>")
     html_parts.append(f"<p>Generated On: {html.escape(generated_on)}</p>")
     html_parts.append(f"<p>Tool: {html.escape(SCRIPT_NAME)} v{html.escape(SCRIPT_VERSION)}</p>")
     html_parts.append("</header>")
+
     html_parts.append("<main>")
 
     html_parts.append("""
@@ -939,8 +819,8 @@ It does not independently prove authorship, device control, intent, or legal lia
         timestamp_local = row.get("timestamp_local", "")
         timestamp_utc = row.get("timestamp_utc", "")
         direction = row.get("direction_interpreted", "")
-        chat_display = row.get("chat_name") or row.get("chat_jid") or row.get("chat_reference", "")
-        sender_display = row.get("sender_name") or row.get("sender_pushname") or row.get("sender_jid") or row.get("group_member_name") or row.get("group_member_jid", "")
+        chat = row.get("chat_resolved") or row.get("chat_reference", "")
+        sender = row.get("sender_resolved") or row.get("sender_reference", "")
         message_text = row.get("message_text", "")
         message_id = row.get("message_id", "")
         message_type_raw = row.get("message_type_raw", "")
@@ -961,8 +841,8 @@ It does not independently prove authorship, device control, intent, or legal lia
         html_parts.append("<br><br>")
         html_parts.append(f"<strong>Local Time:</strong> {html.escape(str(timestamp_local))}<br>")
         html_parts.append(f"<strong>UTC Time:</strong> {html.escape(str(timestamp_utc))}<br>")
-        html_parts.append(f"<strong>Chat:</strong> {html.escape(str(chat_display))}<br>")
-        html_parts.append(f"<strong>Sender:</strong> {html.escape(str(sender_display))}<br>")
+        html_parts.append(f"<strong>Chat:</strong> {html.escape(str(chat))}<br>")
+        html_parts.append(f"<strong>Sender:</strong> {html.escape(str(sender))}<br>")
         html_parts.append(f"<strong>Direction:</strong> <span class='direction'>{html.escape(str(direction))}</span><br>")
 
         if media_reference:
@@ -1049,14 +929,46 @@ def write_run_summary(summary_path, summary_data):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SACS WEP - SecureAfrica WhatsApp Evidence Processor")
+    parser = argparse.ArgumentParser(
+        description="SACS WEP - SecureAfrica WhatsApp Evidence Processor"
+    )
 
-    parser.add_argument("--input", required=True, help="Path to WhatsApp evidence folder containing ChatStorage.sqlite")
-    parser.add_argument("--case-id", required=True, help="Case identifier, for example SACS-CASE-001")
-    parser.add_argument("--output", default="outputs", help="Output folder. Default is outputs")
-    parser.add_argument("--chat-filter", default=None, help="Optional filter for exporting a selected chat by phone number, JID, name, reference, or message text")
-    parser.add_argument("--report-limit", type=int, default=500, help="Maximum number of message records to include in HTML report. Default is 500. Use 0 for no limit.")
-    parser.add_argument("--timezone-offset", default="+00:00", help="Timezone offset for local timestamp display, e.g. +01:00 for Nigeria/WAT. Default is +00:00")
+    parser.add_argument(
+        "--input",
+        required=True,
+        help="Path to WhatsApp evidence folder containing ChatStorage.sqlite",
+    )
+
+    parser.add_argument(
+        "--case-id",
+        required=True,
+        help="Case identifier, for example SACS-CASE-001",
+    )
+
+    parser.add_argument(
+        "--output",
+        default="outputs",
+        help="Output folder. Default is outputs",
+    )
+
+    parser.add_argument(
+        "--chat-filter",
+        default=None,
+        help="Optional filter for exporting a selected chat by phone number, JID, name, reference, or message text",
+    )
+
+    parser.add_argument(
+        "--report-limit",
+        type=int,
+        default=500,
+        help="Maximum number of message records to include in HTML report. Default is 500. Use 0 for no limit.",
+    )
+
+    parser.add_argument(
+        "--timezone-offset",
+        default="+00:00",
+        help="Timezone offset for local timestamp display, e.g. +01:00 for Nigeria/WAT. Default is +00:00",
+    )
 
     args = parser.parse_args()
 
@@ -1117,7 +1029,12 @@ def main():
     selected_chat_path = folders["exports"] / f"selected_chat_timeline_{run_stamp}.csv"
     html_report_path = folders["reports"] / f"timeline_report_{run_stamp}.html"
 
-    expected_files = ["ChatStorage.sqlite", "ChatStorage.sqlite-wal", "ChatStorage.sqlite-shm"]
+    expected_files = [
+        "ChatStorage.sqlite",
+        "ChatStorage.sqlite-wal",
+        "ChatStorage.sqlite-shm",
+    ]
+
     working_database_path = None
 
     log_lines.append("Evidence File Check")
@@ -1128,6 +1045,7 @@ def main():
 
         if source_file.exists():
             log_lines.append(f"[FOUND] {file_name}")
+
             original_hash = calculate_sha256(source_file)
 
             hash_records.append({
@@ -1156,6 +1074,7 @@ def main():
                 log_lines.append(f"[HASH MATCH] Original and working copy match for {file_name}")
             else:
                 log_lines.append(f"[WARNING] Hash mismatch for {file_name}")
+
         else:
             log_lines.append(f"[NOT FOUND] {file_name}")
 
@@ -1173,11 +1092,13 @@ def main():
     try:
         structure = inspect_sqlite_database(working_database_path)
         write_database_structure(structure_path, structure)
+
         relevant_tables = detect_relevant_tables(structure)
 
         log_lines.append("[OK] SQLite database opened in read-only mode.")
         log_lines.append(f"[OK] Total tables detected: {len(structure)}")
         log_lines.append(f"[OK] Database structure written to: {structure_path.resolve()}")
+
         log_lines.append("")
         log_lines.append("Potential WhatsApp-Relevant Tables")
         log_lines.append("-" * 70)
@@ -1195,16 +1116,27 @@ def main():
 
     log_lines.append("")
 
-    lookups = {"profile_lookup": {}, "chat_lookup": {}, "group_member_lookup": {}}
+    lookups = {"chat_lookup": {}, "contact_lookup": {}}
 
     if structure:
-        lookups = build_resolution_lookups(working_database_path, structure, log_lines)
+        lookups = build_resolution_lookups(
+            working_database_path,
+            structure,
+            log_lines,
+        )
 
     log_lines.append("")
-    log_lines.append("Message Extraction, Categorization, and Entity Resolution")
+    log_lines.append("Message Extraction and Categorization")
     log_lines.append("-" * 70)
 
-    message_counts = {"all": 0, "text": 0, "media": 0, "system": 0, "other": 0, "resolved_chat": 0, "resolved_sender": 0}
+    message_counts = {
+        "all": 0,
+        "text": 0,
+        "media": 0,
+        "system": 0,
+        "other": 0,
+    }
+
     selected_records_exported = 0
     chats_summarized = 0
     html_report_records = 0
@@ -1213,11 +1145,28 @@ def main():
     report_title = "SACS WEP Full WhatsApp Timeline Report"
 
     if structure:
-        message_counts = extract_messages(working_database_path, structure, export_paths, log_lines, lookups, target_timezone)
+        message_counts = extract_messages(
+            working_database_path,
+            structure,
+            export_paths,
+            log_lines,
+            lookups,
+            target_timezone,
+        )
 
         if message_counts["all"] > 0:
-            chats_summarized = export_chat_summary(export_paths["all_messages"], chat_summary_path, log_lines)
-            selected_records_exported = export_selected_chat(export_paths["all_messages"], selected_chat_path, args.chat_filter, log_lines)
+            chats_summarized = export_chat_summary(
+                message_csv_path=export_paths["all_messages"],
+                summary_csv_path=chat_summary_path,
+                log_lines=log_lines,
+            )
+
+            selected_records_exported = export_selected_chat(
+                message_csv_path=export_paths["all_messages"],
+                selected_csv_path=selected_chat_path,
+                chat_filter=args.chat_filter,
+                log_lines=log_lines,
+            )
 
             if args.chat_filter and selected_records_exported > 0:
                 html_source_csv = selected_chat_path
@@ -1239,6 +1188,7 @@ def main():
                 timezone_offset=args.timezone_offset,
                 log_lines=log_lines,
             )
+
     else:
         log_lines.append("[WARNING] Message extraction skipped because database structure was not available.")
 
@@ -1258,11 +1208,6 @@ def main():
         "Media Records": message_counts["media"],
         "System Records": message_counts["system"],
         "Other Records": message_counts["other"],
-        "Records With Resolved Chat Info": message_counts.get("resolved_chat", 0),
-        "Records With Resolved Sender Info": message_counts.get("resolved_sender", 0),
-        "Profile Pushname Lookup Entries": len(lookups.get("profile_lookup", {})),
-        "Chat Lookup Entries": len(lookups.get("chat_lookup", {})),
-        "Group Member Lookup Entries": len(lookups.get("group_member_lookup", {})),
         "Chats Summarized": chats_summarized,
         "Selected Chat Filter": args.chat_filter or "None",
         "Selected Chat Records": selected_records_exported,
@@ -1306,13 +1251,22 @@ def main():
     if args.chat_filter and selected_chat_path.exists():
         output_files.append(selected_chat_path)
 
-    write_output_hash_manifest(hash_path, hash_records, output_files, log_lines, case_id)
+    write_output_hash_manifest(
+        hash_path=hash_path,
+        hash_records=hash_records,
+        output_files=output_files,
+        log_lines=log_lines,
+        case_id=case_id,
+    )
 
-    print("[SUCCESS] SACS WEP v0.9.0 completed.")
+    print("[SUCCESS] SACS WEP v0.8.1 completed.")
     print(f"Total: {message_counts['all']}")
-    print(f"Text: {message_counts['text']} | Media: {message_counts['media']} | System: {message_counts['system']} | Other: {message_counts['other']}")
-    print(f"Resolved Chat Records: {message_counts.get('resolved_chat', 0)}")
-    print(f"Resolved Sender Records: {message_counts.get('resolved_sender', 0)}")
+    print(
+        f"Text: {message_counts['text']} | "
+        f"Media: {message_counts['media']} | "
+        f"System: {message_counts['system']} | "
+        f"Other: {message_counts['other']}"
+    )
     print(f"Case Output Folder: {folders['case_folder'].resolve()}")
     print(f"Hash Manifest: {hash_path.resolve()}")
     print(f"Processing Log: {log_path.resolve()}")
