@@ -15,7 +15,18 @@ SACS WEP is not intended to replace commercial forensic suites. Instead, it serv
 ---
 
 # Current Version
-v0.9.0
+## Participant Analytics (v0.9.1)
+v0.9.1 introduces participant-level aggregation using resolved sender and chat information.
+The new `participant_summary_[timestamp].csv` export provides:
+- chat identifier
+- chat name
+- sender JID
+- sender name
+- total messages per participant
+- text/media/system/other breakdown
+- first_seen timestamp
+- last_seen timestamp
+This supports behavioral analysis, contributor identification, and investigative review.
 
 # Key Features
 - WhatsApp Database Processing
