@@ -87,6 +87,7 @@ This assists with:
 
 # Folder Structure
 Example output structure:
+
 <img width="462" height="142" alt="image" src="https://github.com/user-attachments/assets/466fb8b2-be60-426a-ba91-cc99fa27eb9b" />
 
 
