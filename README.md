@@ -1,121 +1,238 @@
 # SACS WEP (SecureAfrica WhatsApp Evidence Processor)
 
-SACS WEP is a lightweight forensic support tool for processing extracted iOS WhatsApp `ChatStorage.sqlite` databases into structured CSV outputs and readable HTML timelines.
+SACS WEP is a forensic-oriented WhatsApp database processing utility developed by SecureAfrica Cyber Solutions (SACS). It is designed to assist investigators, analysts, researchers, and DFIR practitioners in transforming raw WhatsApp SQLite evidence into structured, readable, and reviewable outputs.
+The tool currently focuses on iOS WhatsApp databases (`ChatStorage.sqlite`) and emphasizes:
+- evidence-safe workflow
+- working-copy handling
+- message extraction
+- timeline generation
+- entity resolution
+- output hashing
+- structured exports
 
-It is designed for digital forensic examiners, cybercrime investigators, legal support teams, and students working with WhatsApp evidence.
-
----
-
-## Why This Exists
-
-Working directly with WhatsApp SQLite databases can be slow and error-prone. After extraction, investigators are often left with raw tables (`ZWAMESSAGE`, `ZWACHATSESSION`, etc.), unfamiliar field names, and timestamps that are not immediately interpretable.
-SACS WEP provides a structured way to move from raw database records to:
-- readable timelines  
-- organized message exports  
-- quick chat-level summaries  
-
-without modifying the original evidence.
+SACS WEP is not intended to replace commercial forensic suites. Instead, it serves as a lightweight forensic utility for evidence review, validation, timeline reconstruction, and investigative support.
 
 ---
 
-## Features
+# Current Version
+v0.9.0
 
-- Processes iOS WhatsApp `ChatStorage.sqlite`
-- Creates working copies with hash verification
-- Extracts full message records from `ZWAMESSAGE`
-- Converts Apple/Core Data timestamps (2001 epoch)
-- Supports timezone offset (e.g., +01:00 for WAT)
-- Exports:
-  - full message dataset (CSV)
-  - chat summary (CSV)
-  - selected chat timeline (CSV)
-  - media-related records (CSV)
-- Generates HTML timeline report
-- Produces:
-  - processing logs
-  - hash manifest
-  - database structure report
+# Key Features
+- WhatsApp Database Processing
+- Processes ChatStorage.sqlite
+- Supports associated -wal and -shm files
+- Uses read-only SQLite access during analysis
+- Creates forensic working copies before processing
 
----
+# Message Extraction
+Extracts WhatsApp message records from: ZWAMESSAGE
+including:
+- timestamps
+- message text
+- message types
+- sender/recipient information
+- media references
+- group event data
+
+# Message Categorization
+Messages are categorized into:
+| Category | Message Types       |
+| -------- | ------------------- |
+| text     | 0                   |
+| media    | 1, 2, 3             |
+| system   | 6, 10               |
+| other    | all remaining types |
+
+This classification model was developed through empirical validation on real datasets and may vary across WhatsApp versions.
+
+# Entity Resolution (v0.9.0)
+v0.9.0 introduces entity resolution using:
+- ZWACHATSESSION
+- ZWAGROUPMEMBER
+- ZWAPROFILEPUSHNAME
+This improves timeline readability by resolving:
+- chat JIDs
+- chat names
+- sender JIDs
+- sender names
+- pushnames
+- group member information
+Group event attribution now prioritizes actual group members, where available, rather than incorrectly attributing actions to the group container itself.
+
+# Timeline Reporting
+Generates:
+- CSV exports
+- selected chat exports
+- HTML timeline reports
+- chat summaries
+
+The HTML report includes:
+- timestamps
+- message categories
+- sender information
+- chat information
+- media references
+- direction interpretation
+
+# Hashing and Integrity
+SACS WEP generates SHA-256 hashes for:
+- original evidence files
+- working copies
+- generated outputs
+
+This assists with:
+- integrity verification
+- repeatability
+- examiner documentation
+
+# Folder Structure
+Example output structure:
+outputs/
+└── CASE-ID/
+    ├── Case_Info/
+    ├── Exports/
+    ├── Hashes/
+    ├── Logs/
+    ├── Reports/
+    └── Working_Copy/
+
+# Example Outputs
+## Exports
+- all_messages_raw.csv
+- text_messages.csv
+- media_messages.csv
+- system_messages.csv
+- other_messages.csv
+- chat_summary.csv
+- selected_chat_timeline.csv
+
+## Reports
+- timeline_report.html
+
+## Integrity
+- hash_manifest.txt
+
+## Logging
+- processing_log.txt
+- run_summary.txt
+- database_structure.txt
+
+# Installation
+## Requirements
+- Python 3.10+
+- Windows/Linux/macOS
+- No external dependencies currently required
+
+## Clone Repository
+git clone https://github.com/p3n-c0/sacs-wep.git
+
+## Move into Project Folder
+cd sacs-wep
 
 ## Quick Start
+Place your WhatsApp evidence files inside a folder.
+Example:
+Evidence/
+└── WhatsApp/
+    ├── ChatStorage.sqlite
+    ├── ChatStorage.sqlite-wal
+    └── ChatStorage.sqlite-shm
 
-### 1. Prepare your evidence folder
-Place your extracted WhatsApp files in a folder. For example, C:\Users\YourName\Desktop\WhatsApp\ChatStorage.sqlite
-  * (optional) ChatStorage.sqlite-wal
-  * (optional) ChatStorage.sqlite-shm
+Run
+python sacs_wep.py --input "path_to_whatsapp" --case-id "SACS-CASE-001"
 
-### 2. Run the tool
-python sacs_wep.py --input "C:\Users\YourName\Desktop\WhatsApp" --case-id "CASE-001"
+Example
+python sacs_wep.py --input "C:\Evidence\WhatsApp" --case-id "CASE-A"
 
-Important: The --input argument must point to the folder, not the .sqlite file itself.
+# Common Usage Examples
+## Standard Processing
+python sacs_wep.py --input "C:\Evidence\WhatsApp" --case-id "CASE-A"
 
-### 3. Optional: Set local timezone (Nigeria/WAT)
-python sacs_wep.py --input "C:\Users\YourName\Desktop\WhatsApp" --case-id "CASE-001" --timezone-offset "+01:00"
+## Set Local Timezone
+python sacs_wep.py --input "C:\Evidence\WhatsApp" --case-id "CASE-A" --timezone-offset "+01:00"
 
-### 4. Optional: Export a specific chat
-python sacs_wep.py --input "C:\Users\YourName\Desktop\WhatsApp" --case-id "CASE-002" --chat-filter "2348012345678" --timezone-offset "+01:00"
+## Export Selected Chat
+python sacs_wep.py --input "C:\Evidence\WhatsApp" --case-id "CASE-A" --chat-filter "2348160119708-1407054136@g.us"
+You can filter using:
+- phone number
+- JID
+- chat name
+- sender name
+- message text
 
-### 5. Optional: Generate full HTML report (no record limit)
-python sacs_wep.py --input "C:\Users\YourName\Desktop\WhatsApp" --case-id "CASE-003" --report-limit 0
+## Generate Full HTML Report
+python sacs_wep.py --input "C:\Evidence\WhatsApp" --case-id "CASE-A" --report-limit 0
 
-OPTIONAL STRUCTURE
-<img width="497" height="283" alt="image" src="https://github.com/user-attachments/assets/d4216d79-aa3c-41e3-b495-7ea35357b261" />
+# Validation
+SACS WEP v0.9.0 was validated against a real WhatsApp dataset containing:
+  44,834 records
 
-Example Output
+Validated capabilities:
+- message extraction
+- category classification
+- entity resolution
+- selected chat export
+- HTML reporting
+- output hashing
+- chat summarization
 
-<img width="1046" height="633" alt="image" src="https://github.com/user-attachments/assets/52da060f-8793-4482-8c28-65bdbdb35b12" />
+Validation results included:
+  Resolved Chat Records: 44799
+  Resolved Sender Records: 44833
 
+# Important Notes
+This is not a full forensic suite. Rather, SACS WEP is a forensic support utility intended for:
+- review
+- validation
+- timeline reconstruction
+- evidence organization
 
-## Validation
-SACS WEP has been tested against real WhatsApp database data. Validation included:
-* message count verification against direct SQL queries
-* timestamp conversion checks (Apple epoch → UTC → local time)
-* direction field validation (ZISFROMME)
-* message text comparison
-* chat summary verification
-* selected chat extraction testing
-* hash integrity checks
+It does not independently establish:
+- authorship
+- intent
+- legal attribution
+- device ownership
 
-See: VALIDATION_REPORT.md
+Examiner interpretation remains essential.
 
-## Limitations
-SACS WEP is a forensic support tool, not a full forensic suite. Current limitations include:
-* media reference detection is broad and may include system/service records
-* chat/contact resolution depends on available database fields
-* schema variations across WhatsApp versions may affect field mapping
-* media file extraction and hashing are not yet implemented
-* Android WhatsApp databases are not currently supported
+# Media Extraction
+Media extraction and reconstruction are not yet implemented.
+Current versions primarily process:
+- metadata
+- message structure
+- timeline information
 
-## Forensic Disclaimer
-SACS WEP:
-* does not acquire evidence
-* does not bypass encryption or device locks
-* does not recover overwritten deleted data
-* does not prove authorship or intent
+# WhatsApp Version Differences
+WhatsApp database structures change over time. Some fields, message types, and relationships may differ depending on:
+- iOS version
+- WhatsApp version
+- backup method
+- acquisition method
 
-All outputs must be reviewed alongside:
-* original evidence
-* acquisition records
-* hash verification
-* examiner analysis
+# Future Development
+Planned areas of improvement include:
+- participant summary analytics
+- media awareness improvements
+- Android WhatsApp support
+- improved timeline intelligence
+- enhanced group event interpretation
+- richer reporting formats
 
-This tool assists analysis but does not replace professional forensic judgment.
+# License
+This project is currently released for research, educational, and investigative utility purposes. Formal licensing may be updated in future releases.
 
-## Requirements
-* Python 3.9+
-* No external libraries required (standard library only)
+# Author
+SecureAfrica Cyber Solutions (SACS)
 
-## Future Improvements (v0.8.0)
-* refined media detection logic
-* improved chat and contact resolution
-* output file hashing
-* schema adaptability enhancements
-* media file linkage and hashing
-
-## Author
+## Developed by:
 Ibrahim Sulaiman. A.
-
 CEO, SACS (Nig) Ltd.
 
-Digital Forensics & Cybercrime Investigations
+# Disclaimer
+This tool should be used responsibly and lawfully. Users are responsible for ensuring:
+- lawful acquisition
+- proper authorization
+- chain-of-custody compliance
+- jurisdictional compliance
+- ethical handling of digital evidence
+The author and organization are not responsible for the misuse of this software.
